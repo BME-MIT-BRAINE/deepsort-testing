@@ -43,7 +43,7 @@ def main(_argv):
     max_cosine_distance = 0.4
     nn_budget = None
     nms_max_overlap = 1.0
-    
+
     # initialize deep sort
     model_filename = 'model_data/mars-small128.pb'
     encoder = gdet.create_box_encoder(model_filename, batch_size=1)
@@ -158,7 +158,7 @@ def main(_argv):
 
         # by default allow all classes in .names file
         allowed_classes = list(class_names.values())
-        
+
         # custom allowed classes (uncomment line below to customize tracker for only people)
         #allowed_classes = ['person']
 
@@ -194,7 +194,7 @@ def main(_argv):
         scores = np.array([d.confidence for d in detections])
         classes = np.array([d.class_name for d in detections])
         indices = preprocessing.non_max_suppression(boxs, classes, nms_max_overlap, scores)
-        detections = [detections[i] for i in indices]       
+        detections = [detections[i] for i in indices]
 
         # Call the tracker
         tracker.predict()
@@ -203,10 +203,10 @@ def main(_argv):
         # update tracks
         for track in tracker.tracks:
             if not track.is_confirmed() or track.time_since_update > 1:
-                continue 
+                continue
             bbox = track.to_tlbr()
             class_name = track.get_class()
-            
+
         # draw bbox on screen
             color = colors[int(track.track_id) % len(colors)]
             color = [i * 255 for i in color]
@@ -223,10 +223,10 @@ def main(_argv):
         print("FPS: %.2f" % fps)
         result = np.asarray(frame)
         result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        
+
         if not FLAGS.dont_show:
             cv2.imshow("Output Video", result)
-        
+
         # if output flag is set, save video file
         if FLAGS.output:
             out.write(result)
