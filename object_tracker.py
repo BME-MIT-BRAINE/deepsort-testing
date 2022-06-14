@@ -2,6 +2,7 @@ import os
 # comment out below line to enable tensorflow logging outputs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import time
+import pickle
 import tensorflow as tf
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 if len(physical_devices) > 0:
@@ -37,6 +38,10 @@ flags.DEFINE_float('score', 0.50, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
+
+flags.DEFINE_boolean('create_checkpoint', False, 'create inference checkpoint')
+flags.DEFINE_boolean('load_checkpoint', False, 'load inference checkpoint')
+flags.DEFINE_string('inference_checkpoint', 'checkpoints/inference-checkpoint.pickle', 'path to inference checkpoint pickle')
 
 def main(_argv):
     # Definition of the parameters
@@ -81,6 +86,15 @@ def main(_argv):
 
     out = None
 
+    create_checkpoint = FLAGS.create_checkpoint
+    load_checkpoint   = FLAGS.load_checkpoint
+    checkpoint_file   = FLAGS.inference_checkpoint
+    inference_results=[]
+
+    if load_checkpoint:
+        with open(checkpoint_file, 'rb') as f:
+            inference_results = pickle.load(f)
+
     # get video ready to save locally if flag is set
     if FLAGS.output:
         # by default VideoCapture returns float instead of int
@@ -108,43 +122,56 @@ def main(_argv):
         image_data = image_data[np.newaxis, ...].astype(np.float32)
         start_time = time.time()
 
-        # run detections on tflite if flag is set
-        if FLAGS.framework == 'tflite':
-            interpreter.set_tensor(input_details[0]['index'], image_data)
-            interpreter.invoke()
-            pred = [interpreter.get_tensor(output_details[i]['index']) for i in range(len(output_details))]
-            # run detections using yolov3 if flag is set
-            if FLAGS.model == 'yolov3' and FLAGS.tiny == True:
-                boxes, pred_conf = filter_boxes(pred[1], pred[0], score_threshold=0.25,
-                                                input_shape=tf.constant([input_size, input_size]))
+        if not load_checkpoint:
+            # run detections on tflite if flag is set
+            if FLAGS.framework == 'tflite':
+                print("WARNING: inference checkpointing not tested with tflite")
+                interpreter.set_tensor(input_details[0]['index'], image_data)
+                interpreter.invoke()
+                pred = [interpreter.get_tensor(output_details[i]['index']) for i in range(len(output_details))]
+                # run detections using yolov3 if flag is set
+                if FLAGS.model == 'yolov3' and FLAGS.tiny == True:
+                    boxes, pred_conf = filter_boxes(pred[1], pred[0], score_threshold=0.25,
+                                                    input_shape=tf.constant([input_size, input_size]))
+                else:
+                    boxes, pred_conf = filter_boxes(pred[0], pred[1], score_threshold=0.25,
+                                                    input_shape=tf.constant([input_size, input_size]))
             else:
-                boxes, pred_conf = filter_boxes(pred[0], pred[1], score_threshold=0.25,
-                                                input_shape=tf.constant([input_size, input_size]))
+                batch_data = tf.constant(image_data)
+                pred_bbox = infer(batch_data)
+                for key, value in pred_bbox.items():
+                    boxes = value[:, :, 0:4]
+                    pred_conf = value[:, :, 4:]
+
+            boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
+                boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+                scores=tf.reshape(
+                    pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
+                max_output_size_per_class=50,
+                max_total_size=50,
+                iou_threshold=FLAGS.iou,
+                score_threshold=FLAGS.score
+            )
+
+            # convert data to numpy arrays and slice out unused elements
+            num_objects = valid_detections.numpy()[0]
+            bboxes = boxes.numpy()[0]
+            bboxes = bboxes[0:int(num_objects)]
+            scores = scores.numpy()[0]
+            scores = scores[0:int(num_objects)]
+            classes = classes.numpy()[0]
+            classes = classes[0:int(num_objects)]
+
+            # Collect data for checkpoint file
+            if create_checkpoint:
+                bboxes_list = bboxes.tolist()
+                infres = [bboxes_list, scores, classes, num_objects]
+                inference_results.append(infres)
         else:
-            batch_data = tf.constant(image_data)
-            pred_bbox = infer(batch_data)
-            for key, value in pred_bbox.items():
-                boxes = value[:, :, 0:4]
-                pred_conf = value[:, :, 4:]
-
-        boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
-            boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
-            scores=tf.reshape(
-                pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
-            max_output_size_per_class=50,
-            max_total_size=50,
-            iou_threshold=FLAGS.iou,
-            score_threshold=FLAGS.score
-        )
-
-        # convert data to numpy arrays and slice out unused elements
-        num_objects = valid_detections.numpy()[0]
-        bboxes = boxes.numpy()[0]
-        bboxes = bboxes[0:int(num_objects)]
-        scores = scores.numpy()[0]
-        scores = scores[0:int(num_objects)]
-        classes = classes.numpy()[0]
-        classes = classes[0:int(num_objects)]
+            # Get current values from checkpoint
+            infres = inference_results[frame_num - 1]
+            [bboxes_list, scores, classes, num_objects] = infres
+            bboxes = np.asarray(bboxes_list)
 
         # format bounding boxes from normalized ymin, xmin, ymax, xmax ---> xmin, ymin, width, height
         original_h, original_w, _ = frame.shape
@@ -231,6 +258,12 @@ def main(_argv):
         if FLAGS.output:
             out.write(result)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
+
+    # Write checkpoint file
+    if create_checkpoint:
+        with open(checkpoint_file, 'wb') as f:
+            pickle.dump(inference_results, f)
+
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
