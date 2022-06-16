@@ -105,6 +105,7 @@ def main(_argv):
         out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
 
     frame_num = 0
+    fps_sum=0
     # while video is running
     while True:
         return_value, frame = vid.read()
@@ -115,7 +116,7 @@ def main(_argv):
             print('Video has ended or failed, try a different video format!')
             break
         frame_num +=1
-        print('Frame #: ', frame_num)
+        print('Frame %3d:' % frame_num, end="  ")
         frame_size = frame.shape[:2]
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
@@ -246,8 +247,11 @@ def main(_argv):
                 print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
 
         # calculate frames per second of running detections
-        fps = 1.0 / (time.time() - start_time)
-        print("FPS: %.2f" % fps)
+        elapsed = time.time() - start_time
+        fps = 1.0 / (elapsed)
+        print("%5.1f ms" % (elapsed*1000), end="  ")
+        print("FPS: %5.2f" % fps)
+        fps_sum += fps
         result = np.asarray(frame)
         result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
@@ -258,6 +262,8 @@ def main(_argv):
         if FLAGS.output:
             out.write(result)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
+
+    print("Average FPS: %.2f" % (fps_sum / frame_num))
 
     # Write checkpoint file
     if create_checkpoint:
