@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from . import kalman_filter
-
+import time
 
 INFTY_COST = 1e+5
 
@@ -52,10 +52,17 @@ def min_cost_matching(
     if len(detection_indices) == 0 or len(track_indices) == 0:
         return [], track_indices, detection_indices  # Nothing to match.
 
+    st = time.time()
     cost_matrix = distance_metric(
         tracks, detections, track_indices, detection_indices)
+    e = time.time() - st
+    print('  Cmx: %4.1f ms' % (e*1000))
+
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
+    st = time.time()
     indices = linear_sum_assignment(cost_matrix)
+    e = time.time() - st
+    print('  LSA: %4.1f ms' % (e*1000))
     indices = np.asarray(indices)
     indices = np.transpose(indices)
     matches, unmatched_tracks, unmatched_detections = [], [], []
@@ -120,6 +127,8 @@ def matching_cascade(
     if detection_indices is None:
         detection_indices = list(range(len(detections)))
 
+    print("")
+
     unmatched_detections = detection_indices
     matches = []
     for level in range(cascade_depth):
@@ -133,10 +142,14 @@ def matching_cascade(
         if len(track_indices_l) == 0:  # Nothing to match at this level
             continue
 
+        st = time.time()
         matches_l, _, unmatched_detections = \
             min_cost_matching(
                 distance_metric, max_distance, tracks, detections,
                 track_indices_l, unmatched_detections)
+        e = time.time() - st
+        print('   LEVEL %d: ' % level, '%4.1f ms' % (e*1000))
+
         matches += matches_l
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
     return matches, unmatched_tracks, unmatched_detections
@@ -179,6 +192,7 @@ def gate_cost_matrix(
         Returns the modified cost matrix.
 
     """
+
     gating_dim = 2 if only_position else 4
     gating_threshold = kalman_filter.chi2inv95[gating_dim]
     measurements = np.asarray(

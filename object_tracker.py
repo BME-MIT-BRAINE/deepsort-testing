@@ -116,7 +116,7 @@ def main(_argv):
             print('Video has ended or failed, try a different video format!')
             break
         frame_num +=1
-        print('Frame %3d:' % frame_num, end="  ")
+        print("Frame %3d:" % frame_num, end="  ")
         frame_size = frame.shape[:2]
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
@@ -227,8 +227,15 @@ def main(_argv):
         detections = [detections[i] for i in indices]
 
         # Call the tracker
+        st = time.time()
         tracker.predict()
+        elapsed = time.time() - st
+        print(' KF: %3.1f ms' % (elapsed*1000), end="  ")
+
+        st = time.time()
         tracker.update(detections)
+        elapsed = time.time() - st
+        print(' UP: %4.1f ms' % (elapsed*1000), end="  ")
 
         # update tracks
         for track in tracker.tracks:
@@ -250,9 +257,9 @@ def main(_argv):
 
         # calculate frames per second of running detections
         elapsed = time.time() - start_time
+        print("TOT: %5.1f ms" % (elapsed*1000), end="  ")
         fps = 1.0 / (elapsed)
-        print("%5.1f ms" % (elapsed*1000), end="  ")
-        print("FPS: %5.2f" % fps)
+        print("FPS: %5.1f" % fps)
         fps_sum += fps
         result = np.asarray(frame)
         result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
