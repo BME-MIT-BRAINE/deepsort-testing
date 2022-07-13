@@ -1,0 +1,4 @@
+*.so
+*.o
+cffi_example.c
+cmx_cffi.c

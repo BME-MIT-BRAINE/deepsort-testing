@@ -1,6 +1,19 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
+import cffi
+import cmx_cffi
 
+ffi = cffi.FFI()
+
+def to_ctypes(matrix):
+    if matrix.ndim==1:
+        lenx, leny = matrix.shape, 1
+    else:
+        lenx, leny = matrix.shape
+
+    flattened = matrix.flatten()
+    ptr = ffi.cast('float*', flattened.ctypes.data)
+    return ptr, lenx, leny, flattened
 
 def _pdist(a, b):
     """Compute pair-wise squared distance between points in `a` and `b`.
@@ -51,6 +64,7 @@ def _cosine_distance(a, b, data_is_normalized=False):
     if not data_is_normalized:
         a = np.asarray(a) / np.linalg.norm(a, axis=1, keepdims=True)
         b = np.asarray(b) / np.linalg.norm(b, axis=1, keepdims=True)
+
     return 1. - np.dot(a, b.T)
 
 
@@ -92,8 +106,26 @@ def _nn_cosine_distance(x, y):
         smallest cosine distance to a sample in `x`.
 
     """
-    distances = _cosine_distance(x, y)
-    return distances.min(axis=0)
+
+    use_cffi = True
+
+    if not use_cffi:
+        distances = _cosine_distance(x, y)
+        res = distances.min(axis=0)
+    else:
+        a=np.asarray(x, dtype=np.float32)
+        b=y.astype(np.float32)
+        aptr, ax, ay, af = to_ctypes(a)
+        bptr, bx, by, bf = to_ctypes(b)
+
+        res = np.zeros(bx, dtype=np.float32)
+        resptr = ffi.cast('float*', res.ctypes.data)
+
+        err = cmx_cffi.lib.nn_cosine_dist(aptr, ax, ay, bptr, bx, by, resptr, 0)
+        if (err):
+            print("ERROR in C function:", err)
+
+    return res
 
 
 class NearestNeighborDistanceMetric(object):
