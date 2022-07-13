@@ -146,9 +146,8 @@ class KalmanFilter(object):
             self._std_weight_position * mean[3]]
         innovation_cov = np.diag(np.square(std))
 
-        mean = np.dot(self._update_mat, mean)
-        covariance = np.linalg.multi_dot((
-            self._update_mat, covariance, self._update_mat.T))
+        mean = mean[:4]
+        covariance = covariance[:4, :4]
         return mean, covariance + innovation_cov
 
     def update(self, mean, covariance, measurement):
@@ -173,11 +172,14 @@ class KalmanFilter(object):
         """
         projected_mean, projected_cov = self.project(mean, covariance)
 
-        chol_factor, lower = scipy.linalg.cho_factor(
-            projected_cov, lower=True, check_finite=False)
-        kalman_gain = scipy.linalg.cho_solve(
-            (chol_factor, lower), np.dot(covariance, self._update_mat.T).T,
-            check_finite=False).T
+#        chol_factor, lower = scipy.linalg.cho_factor(projected_cov, lower=True, check_finite=False)
+#        b = covariance[:8,:4].T
+#        kalman_gain = scipy.linalg.cho_solve((chol_factor, lower), b,check_finite=False).T
+
+        b = covariance[:8,:4]
+        c = np.diagonal(projected_cov)
+        kalman_gain = (b/c)
+
         innovation = measurement - projected_mean
 
         new_mean = mean + np.dot(innovation, kalman_gain.T)
@@ -220,10 +222,16 @@ class KalmanFilter(object):
             mean, covariance = mean[:2], covariance[:2, :2]
             measurements = measurements[:, :2]
 
-        cholesky_factor = np.linalg.cholesky(covariance)
         d = measurements - mean
-        z = scipy.linalg.solve_triangular(
-            cholesky_factor, d.T, lower=True, check_finite=False,
-            overwrite_b=True)
-        squared_maha = np.sum(z * z, axis=0)
+
+        #cholesky_factor = np.linalg.cholesky(covariance)
+        #z = scipy.linalg.solve_triangular(
+        #    cholesky_factor, d.T, lower=True, check_finite=False,
+        #    overwrite_b=True)
+        #squared_maha = np.sum(z * z, axis=0)
+
+        c = np.diagonal(covariance)
+        z = np.square(d) / c
+        squared_maha = np.sum(z,axis=1).T
+
         return squared_maha
