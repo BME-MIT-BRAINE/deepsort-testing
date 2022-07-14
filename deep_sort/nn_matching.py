@@ -108,6 +108,7 @@ def _nn_cosine_distance(x, y):
     """
 
     use_cffi = True
+    use_fixed_point = True
 
     if not use_cffi:
         distances = _cosine_distance(x, y)
@@ -121,7 +122,10 @@ def _nn_cosine_distance(x, y):
         res = np.zeros(bx, dtype=np.float32)
         resptr = ffi.cast('float*', res.ctypes.data)
 
-        err = cmx_cffi.lib.nn_cosine_dist(aptr, ax, ay, bptr, bx, by, resptr, 0)
+        if use_fixed_point:
+            err = cmx_cffi.lib.nn_cosine_dist_ap(aptr, ax, ay, bptr, bx, by, resptr, 0)
+        else:
+            err = cmx_cffi.lib.nn_cosine_dist(aptr, ax, ay, bptr, bx, by, resptr, 0)
         if (err):
             print("ERROR in C function:", err)
 

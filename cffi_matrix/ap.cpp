@@ -1,57 +1,20 @@
-#include "cmx.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-
 #include "ap.h"
+#include "ap_fixed.h"
 
-void printmat(float* a, unsigned ax, unsigned ay) {
-    for (unsigned i = 0; i < ax; i++) {
-        for(unsigned j = 0; j < ay; j++) {
-            unsigned idx= i*ay + j;
-            printf("%6.4f ", a[idx]);
-        }
-        printf("\n");
+#define BITS 16
+
+#define APTYPE ap_fixed<BITS, 1>
+
+void float_to_ap(float* a, APTYPE* o, unsigned len) {
+    for (int i=0; i<len; i++) {
+        o[i] = a[i];
     }
 }
 
-/**
- * @brief Multiply 2 matrices (a*b)
- *
- * @param a left matrix
- * @param ax rows of a
- * @param ay columns of a
- * @param b right matrix
- * @param bx rows of b
- * @param by columns of b
- * @param res buffer for result. Should be at least ax*by in size
- * @return int 0 on success
- */
-int matmul(float* a, unsigned ax, unsigned ay, float* b, unsigned bx, unsigned by, float* res) {
-    if (ay != bx) {
-        return -1;
+void ap_to_float(APTYPE* a, float* o, unsigned len) {
+    for (int i=0; i<len; i++) {
+        o[i] = a[i].to_float();
     }
-    // output size
-    unsigned rx = ax;
-    unsigned ry = by;
-
-    // clear buffer
-    memset(res, 0, rx*ry*sizeof(float));
-
-    unsigned i, j, k, ri, ai, bi;
-
-    for (i = 0; i < rx; i++) {
-        for (j = 0; j < ry; j++) {
-            ri = i*ry + j;
-            for (k=0; k < ay; k++) {
-                ai = i*ay + k;
-                bi = k*by + j;
-                res[ri] += a[ai] * b[bi];   // res[i][j] += a[i][k] * b[k][j]
-            }
-        }
-    }
-    return 0;
 }
 
 /**
@@ -66,7 +29,7 @@ int matmul(float* a, unsigned ax, unsigned ay, float* b, unsigned bx, unsigned b
  * @param res buffer for result. Should be at least ax*bx in size
  * @return int 0 on success
  */
-int matmul_trans(float* a, unsigned ax, unsigned ay, float* b, unsigned bx, unsigned by, float* res) {
+int matmul_trans(APTYPE* a, unsigned ax, unsigned ay, APTYPE* b, unsigned bx, unsigned by, APTYPE* res) {
     if (ay != by) {
         return -1;
     }
@@ -75,7 +38,7 @@ int matmul_trans(float* a, unsigned ax, unsigned ay, float* b, unsigned bx, unsi
     unsigned ry = bx;
 
     // clear buffer
-    memset(res, 0, rx*ry*sizeof(float));
+    memset(res, 0, rx*ry*sizeof(APTYPE));
 
     unsigned i, j, k, ri, ai, bi;
 
@@ -121,21 +84,34 @@ int rownorm(float* a, unsigned ax, unsigned ay) {
 /*
  * Normalize, then 1-a*bT
  */
-int nn_cosine_dist(float* a, unsigned ax, unsigned ay,
-                   float* b, unsigned bx, unsigned by,
-                   float* res, unsigned is_normalized) {
+int ap_nn_cosine_dist(float* a, unsigned ax, unsigned ay,
+                      float* b, unsigned bx, unsigned by,
+                      float* res, unsigned is_normalized) {
     if (!is_normalized) {
         rownorm(a, ax, ay);
         rownorm(b, bx, by);
     }
-
     // output size
     unsigned rx = ax;
     unsigned ry = bx;
 
-    float* mul = (float*)malloc(rx*ry*sizeof(float));
 
-    int err = matmul_trans(a, ax, ay, b, bx, by, mul);
+    APTYPE* c = new APTYPE[ax*ay];
+    APTYPE* d = new APTYPE[bx*by];
+    APTYPE* apmul = new APTYPE[rx*ry];
+
+    float_to_ap(a, c, ax*ay);
+    float_to_ap(b, d, bx*by);
+
+    int err = matmul_trans(c, ax, ay, d, bx, by, apmul);
+
+    float* mul = (float*)malloc(rx*ry*sizeof(float));
+    ap_to_float(apmul, mul, rx*ry);
+
+    delete[] c;
+    delete[] d;
+    delete[] apmul;
+
 
     if (err) {
         return err;
@@ -167,9 +143,3 @@ int nn_cosine_dist(float* a, unsigned ax, unsigned ay,
     return 0;
 }
 
-int nn_cosine_dist_ap(float* a, unsigned ax, unsigned ay,
-                      float* b, unsigned bx, unsigned by,
-                      float* res, unsigned is_normalized) {
-    ap_nn_cosine_dist(a,ax,ay,b,bx,by,res,is_normalized);
-    return 0;
-}

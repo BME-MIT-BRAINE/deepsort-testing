@@ -12,4 +12,7 @@ int matmul_trans(float* a, unsigned ax, unsigned ay,
 int nn_cosine_dist(float* a, unsigned ax, unsigned ay,
                    float* b, unsigned bx, unsigned by, float* res, unsigned is_normalized);
 
+int nn_cosine_dist_ap(float* a, unsigned ax, unsigned ay,
+                      float* b, unsigned bx, unsigned by, float* res, unsigned is_normalized);
+
 #endif
