@@ -26,7 +26,7 @@ flags.DEFINE_string('inference_checkpoint', 'checkpoints/inference-checkpoint.pi
 def main(_argv):
     # Definition of the parameters
     max_cosine_distance = 0.4
-    nn_budget = None
+    nn_budget = 10
     nms_max_overlap = 1.0
 
     # calculate cosine distance metric
@@ -36,11 +36,6 @@ def main(_argv):
 
     video_path = FLAGS.video
 
-    # begin video capture
-    try:
-        vid = cv2.VideoCapture(int(video_path))
-    except:
-        vid = cv2.VideoCapture(video_path)
 
     out = None
 
@@ -61,19 +56,18 @@ def main(_argv):
         codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
         out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
 
+    total_frames=len(inference_results)
+
     frame_num = 0
     fps_sum=0
     # while video is running
     while True:
-        return_value, frame = vid.read()
-        if return_value:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            image = Image.fromarray(frame)
-        else:
+        if frame_num==total_frames:
             print('Video has ended or failed, try a different video format!')
             break
+
         frame_num +=1
-        print('Frame %3d:' % frame_num, end="  ")
+        print('\nFrame %3d:' % frame_num)
         start_time = time.time()
 
         if not load_checkpoint:
@@ -87,49 +81,52 @@ def main(_argv):
 
 
         #initialize color map
-        cmap = plt.get_cmap('tab20b')
-        colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
+        #cmap = plt.get_cmap('tab20b')
+        #colors = [cmap(i)[:3] for i in np.linspace(0, 1, 20)]
 
         # run non-maxima supression
+        st = time.time()
         boxs = np.array([d.tlwh for d in detections])
         scores = np.array([d.confidence for d in detections])
         classes = np.array([d.class_name for d in detections])
         indices = preprocessing.non_max_suppression(boxs, classes, nms_max_overlap, scores)
         detections = [detections[i] for i in indices]
+        elapsed = time.time() - st
+        print(' Non-maxima suppression: %4.2f ms' % (elapsed*1000))
 
         # Call the tracker
+        st = time.time()
         tracker.predict()
+        elapsed = time.time() - st
+        print(' KF predict: %3.1f ms' % (elapsed*1000))
+
+        print(' Tracker update:')
+        st = time.time()
         tracker.update(detections)
+        elapsed = time.time() - st
+        print(' Update total: %4.1f ms' % (elapsed*1000))
 
         # update tracks
-        for track in tracker.tracks:
-            if not track.is_confirmed() or track.time_since_update > 1:
-                continue
-            bbox = track.to_tlbr()
-            class_name = track.get_class()
+        #for track in tracker.tracks:
+            #if not track.is_confirmed() or track.time_since_update > 1:
+            #    continue
+            #bbox = track.to_tlbr()
+            #class_name = track.get_class()
 
             # draw bbox on screen
-            color = colors[int(track.track_id) % len(colors)]
-            color = [i * 255 for i in color]
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1]-30)), (int(bbox[0])+(len(class_name)+len(str(track.track_id)))*17, int(bbox[1])), color, -1)
-            cv2.putText(frame, class_name + "-" + str(track.track_id),(int(bbox[0]), int(bbox[1]-10)),0, 0.75, (255,255,255),2)
+            #color = colors[int(track.track_id) % len(colors)]
+            #color = [i * 255 for i in color]
 
             # if enable info flag then print details about each track
-            if FLAGS.info:
-                print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
+            #if FLAGS.info:
+            #    print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
 
         # calculate frames per second of running detections
         elapsed = time.time() - start_time
         fps = 1.0 / (elapsed)
-        print("%5.1f ms" % (elapsed*1000), end="  ")
-        print("FPS: %5.2f" % fps)
+        print("Total: %5.1f ms" % (elapsed*1000), end="  ")
+        print("/ %5.2f" % fps, "FPS")
         fps_sum += fps
-        result = np.asarray(frame)
-        result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-        if not FLAGS.dont_show:
-            cv2.imshow("Output Video", result)
 
         # if output flag is set, save video file
         if FLAGS.output:

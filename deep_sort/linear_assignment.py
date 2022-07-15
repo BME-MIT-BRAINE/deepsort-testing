@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from . import kalman_filter
-
+import time
 
 INFTY_COST = 1e+5
 
@@ -52,10 +52,17 @@ def min_cost_matching(
     if len(detection_indices) == 0 or len(track_indices) == 0:
         return [], track_indices, detection_indices  # Nothing to match.
 
+    st = time.time()
     cost_matrix = distance_metric(
         tracks, detections, track_indices, detection_indices)
+    e = time.time() - st
+    print('        Cmx: %5.2f ms' % (e*1000), end=" ")
+
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
+    st = time.time()
     indices = linear_sum_assignment(cost_matrix)
+    e = time.time() - st
+    print('  LSA: %5.2f ms' % (e*1000))
     indices = np.asarray(indices)
     indices = np.transpose(indices)
     matches, unmatched_tracks, unmatched_detections = [], [], []
