@@ -1,0 +1,3 @@
+[submodule "cffi_matrix/deepsort-accel"]
+	path = cffi_matrix/deepsort-accel
+	url = git@github.com:BME-MIT-BRAINE/deepsort-accel.git

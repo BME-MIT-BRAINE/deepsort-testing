@@ -107,27 +107,8 @@ def _nn_cosine_distance(x, y):
 
     """
 
-    use_cffi = True
-    use_fixed_point = True
-
-    if not use_cffi:
-        distances = _cosine_distance(x, y)
-        res = distances.min(axis=0)
-    else:
-        a=np.asarray(x, dtype=np.float32)
-        b=y.astype(np.float32)
-        aptr, ax, ay, af = to_ctypes(a)
-        bptr, bx, by, bf = to_ctypes(b)
-
-        res = np.zeros(bx, dtype=np.float32)
-        resptr = ffi.cast('float*', res.ctypes.data)
-
-        if use_fixed_point:
-            err = cmx_cffi.lib.nn_cosine_dist_ap(aptr, ax, ay, bptr, bx, by, resptr, 0)
-        else:
-            err = cmx_cffi.lib.nn_cosine_dist(aptr, ax, ay, bptr, bx, by, resptr, 0)
-        if (err):
-            print("ERROR in C function:", err)
+    distances = _cosine_distance(x, y)
+    res = distances.min(axis=0)
 
     return res
 
@@ -207,7 +188,41 @@ class NearestNeighborDistanceMetric(object):
             `targets[i]` and `features[j]`.
 
         """
-        cost_matrix = np.zeros((len(targets), len(features)))
-        for i, target in enumerate(targets):
-            cost_matrix[i, :] = self._metric(self.samples[target], features)
+        use_cffi = True
+
+
+        if not use_cffi:
+            cost_matrix = np.zeros((len(targets), len(features)))
+            for i, target in enumerate(targets):
+                s = self.samples[target]
+                cost_matrix[i, :] = self._metric(s, features)
+        else:
+            numOfFeatures = len(features)
+            numOfTracks = len(targets)
+            numOfSamples = []
+            allSamples = []
+
+            for target in targets:
+                samples = self.samples[target]
+                allSamples = allSamples + samples
+                numOfSamples.append(len(samples))
+
+            s = np.asarray(allSamples, dtype=np.float32)
+            f = np.asarray(features, dtype=np.float32)
+            n = np.asarray(numOfSamples, dtype=np.intc)
+
+            sptr, sx, sy, sf = to_ctypes(s)
+            fptr, fx, fy, ff = to_ctypes(f)
+
+            nptr = ffi.cast('unsigned*', n.ctypes.data)
+
+            res = np.zeros((len(targets), len(features)), dtype=np.float32)
+            resptr = ffi.cast('float*', res.ctypes.data)
+
+            err = cmx_cffi.lib.cmx(sptr, fptr, resptr, nptr, numOfFeatures, numOfTracks)
+            if (err):
+                print("ERROR in C function:", err)
+
+            cost_matrix = res
+
         return cost_matrix

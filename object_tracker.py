@@ -46,7 +46,7 @@ flags.DEFINE_string('inference_checkpoint', 'checkpoints/inference-checkpoint.pi
 def main(_argv):
     # Definition of the parameters
     max_cosine_distance = 0.4
-    nn_budget = None
+    nn_budget = 10
     nms_max_overlap = 1.0
 
     # initialize deep sort

@@ -5,7 +5,7 @@ import re
 ffi = cffi.FFI()
 
 this_dir = pathlib.Path().resolve()
-h_file_name = this_dir / "cmx.h"
+h_file_name = this_dir / "deepsort-accel/src/deepsort_cmx_c_wrapper.h"
 with open(h_file_name) as h_file:
     # cffi does not like our preprocessor directives, so we remove them
     lns = h_file.read().splitlines()
@@ -19,7 +19,7 @@ ffi.set_source(
     # is necessary. We need to include the .h files, though, because behind
     # the scenes cffi generates a .c file which contains a Python-friendly
     # wrapper around each of the functions.
-    '#include "cmx.h"',
+    '#include "deepsort-accel/src/deepsort_cmx_c_wrapper.h"',
     # The important thing is to include the pre-built lib in the list of
     # libraries we are linking against:
     libraries=["cmx"],
